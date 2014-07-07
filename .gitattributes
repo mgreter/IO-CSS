@@ -1,0 +1,7 @@
+*.js -crlf
+*.css -crlf
+*.scss -crlf
+*.sass -crlf
+
+*.t text eol=lf
+*.pm text eol=lf
