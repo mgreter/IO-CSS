@@ -21,8 +21,8 @@ use Encode qw(encode);
 is(scalar sniff_encoding(\ "ascii"), undef, 'ascii only string');
 is(scalar sniff_encoding(\ "\xC3\x84"), 'utf-8-strict', 'utf8 string');
 
-is(scalar sniff_encoding(\ "ascii", undef, { encoding => 1 }), undef, 'ascii only string');
-is(scalar sniff_encoding(\ "\xC3\x84", undef, { encoding => 1 })->name, 'utf-8-strict', 'utf8 string');
+is(scalar sniff_encoding(\ "ascii", undef, { encoding => 1 }), undef, 'ascii only string (return object)');
+is(scalar sniff_encoding(\ "\xC3\x84", undef, { encoding => 1 })->name, 'utf-8-strict', 'utf8 string (return object)');
 
 is(scalar sniff_encoding(\ "\xFE\xFF"), 'UTF-16BE', 'testing UTF-16BE bom');
 is(scalar sniff_encoding(\ "\xFF\xFE"), 'UTF-16LE', 'testing UTF-16LE bom');

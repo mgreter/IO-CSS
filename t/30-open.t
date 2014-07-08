@@ -25,78 +25,85 @@ sub test
 {
   my ($expected, $out, $data, $name, $nextArg) = @_;
 
-  my $options;
-  if (ref $name) {
-    $options = $name;
-    $name    = $nextArg;
-  }
+  eval
+  {
 
-  unless ($name) {
-    $name = 'test ' . ($expected || $default_encoding);
-  }
+    my $options;
+    if (ref $name) {
+      $options = $name;
+      $name    = $nextArg;
+    }
 
-  my $tmp = File::Temp->new(UNLINK => 1);
-  open(my $mem, '>', \(my $buf)) or die;
+    unless ($name) {
+      $name = 'test ' . ($expected || $default_encoding);
+    }
 
-  binmode $tmp, ':raw';
-  binmode $mem, ':raw';
+    my $tmp = File::Temp->new(UNLINK => 1);
+    open(my $mem, '>', \(my $buf)) or die;
 
-	if ($out eq 'UTF-16BE') { print $tmp "\xFe\xFF"; print $mem "\xFe\xFF"; }
-	elsif ($out eq 'UTF-16LE') { print $tmp "\xFF\xFe"; print $mem "\xFF\xFe"; }
+    binmode $tmp, ':raw';
+    binmode $mem, ':raw';
 
-  if ($out) {
-    $out = ":encoding($out)" unless $out =~ /^:/;
-    binmode $tmp, $out;
-    binmode $mem, $out;
-  }
+    if ($out eq 'UTF-16BE') { print $tmp "\xFe\xFF"; print $mem "\xFe\xFF"; }
+    elsif ($out eq 'UTF-16LE') { print $tmp "\xFF\xFe"; print $mem "\xFF\xFe"; }
 
-  print $mem $data;
-  print $tmp $data;
-  close $mem;
-  $tmp->close;
+    if ($out) {
+      $out = ":encoding($out)" unless $out =~ /^:/;
+      binmode $tmp, $out;
+      binmode $mem, $out;
+    }
 
-  my ($fh, $encoding, $bom) = IO::CSS::file_and_encoding("$tmp", $options);
+    print $mem $data;
+    print $tmp $data;
+    close $mem;
+    $tmp->close;
 
-  if ($options and $options->{encoding}) {
-    ok(blessed($encoding), 'returned an object');
-    $encoding = eval { $encoding->name };
-  }
+    my ($fh, $encoding, $bom) = IO::CSS::file_and_encoding("$tmp", $options);
 
-  is($encoding, $expected || $default_encoding, sprintf("%s (1)", $name));
+    if ($options and $options->{encoding}) {
+      ok(blessed($encoding), 'returned an object');
+      $encoding = eval { $encoding->name };
+    }
 
-  my $firstLine = <$fh>;
+    is($encoding, $expected || $default_encoding, sprintf("%s (1)", $name));
 
-  close $fh;
+    my $firstLine = <$fh>;
 
-  $fh = css_file("$tmp", $options);
+    close $fh;
 
-  is(<$fh>, $firstLine, sprintf("%s (2)", $name));
+    $fh = css_file("$tmp", $options);
 
-  close $fh;
+    is(<$fh>, $firstLine, sprintf("%s (2)", $name));
 
-  undef $mem;
-  # Test sniff_encoding:
-  open($mem, '<', \$buf) or die "Can't open in-memory file: $!";
+    close $fh;
 
-  delete $options->{encoding} if $options;
+    undef $mem;
+    # Test sniff_encoding:
+    open($mem, '<', \$buf) or die "Can't open in-memory file: $!";
 
-  ($encoding, $bom) = IO::CSS::sniff_encoding($mem, undef, $options);
+    delete $options->{encoding} if $options;
 
-  is($encoding, $expected, sprintf("%s (3)", $name));
+    ($encoding, $bom) = IO::CSS::sniff_encoding($mem, undef, $options);
 
-  seek $mem, 0, 0;
+    is($encoding, $expected, sprintf("%s (3)", $name));
 
-  $options->{encoding} = 1;
+    seek $mem, 0, 0;
 
-  ($encoding, $bom) = IO::CSS::sniff_encoding($mem, undef, $options);
+    $options->{encoding} = 1;
 
-  if (defined $expected) {
-    ok(blessed($encoding), 'encoding is an object');
+    ($encoding, $bom) = IO::CSS::sniff_encoding($mem, undef, $options);
 
-    is(eval { $encoding->name }, $expected, sprintf("%s (4)", $name));
-  } else {
-    is($encoding, undef, sprintf("%s (5)", $name));
-  }
+    if (defined $expected) {
+      ok(blessed($encoding), 'encoding is an object');
+
+      is(eval { $encoding->name }, $expected, sprintf("%s (4)", $name));
+    } else {
+      is($encoding, undef, sprintf("%s (5)", $name));
+    }
+  };
+
+  die "ERROR: ", $name, "\n", $@ if $@;
+
 } # end test
 
 #---------------------------------------------------------------------

@@ -181,21 +181,38 @@ sub find_charset_in
 # EO find_charset_in
 
 ####################################################################################################
+# create data for bom matching (inspired from File::BOM)
+####################################################################################################
+
+# list all supported bom encodings (on read)
+my @encodings = qw(utf-8-strict UTF-16BE UTF-16LE UTF-32BE UTF-32LE);
+# list additional bom encodings (on write)
+my @additional = qw(UCS-2 iso-10646-1 utf8 UTF-8 utf-8-strict);
+
+# create the lookup hash for bom to encoding (on read)
+our %bom2enc = ( map { encode($_, "\x{feff}") => $_ } @encodings );
+# create the lookup hash for bom to encoding (on write)
+our %enc2bom = ( reverse(%bom2enc), map { $_ => encode($_, "\x{feff}") } @additional );
+
+# create the lookup hash for charset to encoding (on read)
+# filter out utf-8-strict, as this would match any ascii charset
+our %cset2enc = ( map { encode($_, '@charset') => $_ } grep { $_ ne 'utf-8-strict'} @encodings );
+# create the lookup hash for charset to encoding (on write)
+our %enc2cset = ( reverse(%cset2enc), map { $_ => encode($_, '@charset') } @additional );
+
+# sort boms by listening the longest ones first
+my @boms = sort { length $b <=> length $a } keys %bom2enc;
+my @csets = sort { length $b <=> length $a } keys %cset2enc;
+
+# create regular expressions to match any bom or charset string
+my $re_boms_str = join "|", @boms; our $re_boms = qr/\A($re_boms_str)/o;
+my $re_csets_str = join "|", @csets; our $re_csets = qr/\A($re_csets_str)/o;
+
+####################################################################################################
 # main function to sniff the encoding
 # we will first check for a bom, then we will check
 # for a @charset rule inside the first 1024 bytes.
 ####################################################################################################
-
-# bom and "@charset" written in multibyte encodings
-my @encodings = (
-	['utf-8-strict', qr/\xEF\xBB\xBF/, qr/\x40\x63\x68\x61\x72\x73\x65\x74/, 3], # \x20\x22
-	['UTF-32BE', qr/\x00\x00\xFE\xFF/, qr/\x00\x00\x00\x40\x00\x00\x00\x63\x00\x00\x00\x68\x00\x00\x00\x61\x00\x00\x00\x72\x00\x00\x00\x73\x00\x00\x00\x65\x00\x00\x00\x74/, 4], # \x00\x00\x00\x20\x00\x00\x00\x22
-	['UTF-32LE', qr/\xFF\xFE\x00\x00/, qr/\x40\x00\x00\x00\x63\x00\x00\x00\x68\x00\x00\x00\x61\x00\x00\x00\x72\x00\x00\x00\x73\x00\x00\x00\x65\x00\x00\x00\x74\x00\x00\x00/, 4], # \x20\x00\x00\x00\x22\x00\x00\x00
-	['UCS-4-2143', qr/\x00\x00\xFF\xFE/, qr/\x00\x00\x40\x00\x00\x00\x63\x00\x00\x00\x68\x00\x00\x00\x61\x00\x00\x00\x72\x00\x00\x00\x73\x00\x00\x00\x65\x00\x00\x00\x74\x00/, 4], # \x00\x00\x20\x00\x00\x00\x22\x00
-	['UCS-4-3412', qr/\xFE\xFF\x00\x00/, qr/\x00\x40\x00\x00\x00\x63\x00\x00\x00\x68\x00\x00\x00\x61\x00\x00\x00\x72\x00\x00\x00\x73\x00\x00\x00\x65\x00\x00\x00\x74\x00\x00/, 4], # \x00\x20\x00\x00\x00\x22\x00\x00
-	['UTF-16BE', qr/\xFE\xFF/, qr/\x00\x40\x00\x63\x00\x68\x00\x61\x00\x72\x00\x73\x00\x65\x00\x74/, 2], # \x00\x20\x00\x22
-	['UTF-16LE', qr/\xFF\xFE/, qr/\x40\x00\x63\x00\x68\x00\x61\x00\x72\x00\x73\x00\x65\x00\x74\x00/, 2], # \x20\x00\x22\x00
-);
 
 sub sniff_encoding
 {
@@ -230,14 +247,17 @@ sub sniff_encoding
 	# declare local variables
 	my ($bom_off, $bom_enc) = (0);
 
-	foreach my $enc (@encodings)
+	# match for all possibilites in one run
+	if (my (@match) = $buf =~ /^(?:$re_boms|$re_csets)/)
 	{
-		# check if buffer matches bom or charset
-		next unless ($buf =~ /^(?:$enc->[1]|$enc->[2])/x);
-		# set encoding to first name and get bom length
-		($bom_enc, $bom_off) = ($enc->[0], $enc->[3]);
-
-	last }
+		# get the encoding from one of the matches
+		$bom_enc = $bom2enc{$match[0]} if defined $match[0];
+		$bom_enc = $cset2enc{$match[1]} if defined $match[1];
+		# assertion (should not happen as we checked before)
+		die "illegal state: no match" unless defined $bom_enc;
+		# set the bom length (but only if a bom was matched)
+		$bom_off = length($enc2bom{$bom_enc}) if defined $match[0];
+	}
 
 	# get text from buffer to search
 	my $head = substr($buf, 0, 1024);
